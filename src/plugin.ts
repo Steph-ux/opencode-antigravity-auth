@@ -1,5 +1,5 @@
 import { exec } from "node:child_process";
-import { tool } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin/tool";
 import {
   ANTIGRAVITY_DEFAULT_PROJECT_ID,
   ANTIGRAVITY_ENDPOINT_FALLBACKS,
@@ -1450,7 +1450,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
       }
 
       return {
-        apiKey: "",
+        apiKey: "antigravity-oauth",
         async fetch(input, init) {
           if (!isGenerativeLanguageRequest(input)) {
             return fetch(input, init);
