@@ -263,10 +263,10 @@ function aggregateGeminiCliQuota(response: RetrieveUserQuotaResponse): GeminiCli
     }
     
     // Filter out models we don't care about for Gemini CLI quotas
-    // Only show gemini-3-* and gemini-2.5-pro models (the premium ones)
+    // Only show gemini-3* and gemini-2.5-pro models (the premium ones)
     const modelId = bucket.modelId;
     const isRelevantModel = 
-      modelId.startsWith("gemini-3-") || 
+      modelId.startsWith("gemini-3") || 
       modelId === "gemini-2.5-pro";
     
     if (!isRelevantModel) {
