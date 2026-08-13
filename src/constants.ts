@@ -90,8 +90,10 @@ export function setAntigravityVersion(version: string): void {
 export const ANTIGRAVITY_VERSION = ANTIGRAVITY_VERSION_FALLBACK;
 
 export function getAntigravityHeaders(): HeaderSet & { "Client-Metadata": string } {
+  const platform = process.platform === "win32" ? "windows" : "darwin";
+  const arch = process.arch === "x64" ? "amd64" : process.arch;
   return {
-    "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${getAntigravityVersion()} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+    "User-Agent": `antigravity/cli/${getAntigravityVersion()} (aidev_client; os_type=${platform}; arch=${arch}; cl=962369648; auth_method=consumer)`,
     "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
     "Client-Metadata": `{"ideType":"ANTIGRAVITY","platform":"${process.platform === "win32" ? "WINDOWS" : "MACOS"}","pluginType":"GEMINI"}`,
   };
@@ -99,7 +101,7 @@ export function getAntigravityHeaders(): HeaderSet & { "Client-Metadata": string
 
 /** @deprecated Use getAntigravityHeaders() for runtime access. */
 export const ANTIGRAVITY_HEADERS = {
-  "User-Agent": `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Antigravity/${ANTIGRAVITY_VERSION} Chrome/138.0.7204.235 Electron/37.3.1 Safari/537.36`,
+  "User-Agent": `antigravity/cli/${ANTIGRAVITY_VERSION} (aidev_client; os_type=windows; arch=amd64; cl=962369648; auth_method=consumer)`,
   "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
   "Client-Metadata": `{"ideType":"ANTIGRAVITY","platform":"${process.platform === "win32" ? "WINDOWS" : "MACOS"}","pluginType":"GEMINI"}`,
 } as const;
@@ -138,8 +140,10 @@ export function getRandomizedHeaders(style: HeaderStyle, model?: string): Header
   }
   const platform = randomFrom(ANTIGRAVITY_PLATFORMS);
   const metadataPlatform = platform.startsWith("windows") ? "WINDOWS" : "MACOS";
+  const [osType = "windows"] = platform.split("/");
+  const [archType = "amd64"] = platform.split("/").slice(1);
   return {
-    "User-Agent": `antigravity/${getAntigravityVersion()} ${platform}`,
+    "User-Agent": `antigravity/cli/${getAntigravityVersion()} (aidev_client; os_type=${osType}; arch=${archType}; cl=962369648; auth_method=consumer)`,
     "X-Goog-Api-Client": randomFrom(ANTIGRAVITY_API_CLIENTS),
     "Client-Metadata": `{"ideType":"ANTIGRAVITY","platform":"${metadataPlatform}","pluginType":"GEMINI"}`,
   };

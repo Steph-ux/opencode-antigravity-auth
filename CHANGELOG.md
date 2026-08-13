@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **User-Agent gate on generation endpoints** - `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` returns `404 "Requested entity was not found"` for any `User-Agent` that does not start with `antigravity/cli/` (verified live against the backend: fingerprint format, Electron-style UA, and `google-api-nodejs-client` all get 404; any `antigravity/cli/<version>` gets 200). Fingerprint, randomized-header pool, and `getAntigravityHeaders()` now emit the real CLI UA format `antigravity/cli/{version} (aidev_client; os_type=...; arch=...; cl=962369648; auth_method=consumer)`. Stored fingerprints in legacy format are migrated on read. This unblocks `gemini-3.7-*` models.
+
 ## [1.6.0] - 2026-02-20
 
 ### Fixed

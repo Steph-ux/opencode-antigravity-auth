@@ -50,7 +50,7 @@ describe("getRandomizedHeaders", () => {
         const headers = getRandomizedHeaders("antigravity")
         const ua = headers["User-Agent"]!
         const metadata = JSON.parse(headers["Client-Metadata"]!)
-        if (ua.includes("windows/")) {
+        if (ua.includes("os_type=windows")) {
           expect(metadata.platform).toBe("WINDOWS")
         } else {
           expect(metadata.platform).toBe("MACOS")
@@ -61,7 +61,8 @@ describe("getRandomizedHeaders", () => {
     it("never produces a linux User-Agent", () => {
       for (let i = 0; i < 50; i++) {
         const headers = getRandomizedHeaders("antigravity")
-        expect(headers["User-Agent"]).not.toMatch(/linux\//)
+        expect(headers["User-Agent"]).toMatch(/^antigravity\/cli\//)
+        expect(headers["User-Agent"]).not.toMatch(/os_type=linux/)
       }
     })
   })

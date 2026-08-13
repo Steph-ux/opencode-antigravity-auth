@@ -62,7 +62,7 @@ https://www.googleapis.com/auth/experimentsandconfigs
 ```http
 Authorization: Bearer {access_token}
 Content-Type: application/json
-User-Agent: antigravity/1.15.8 windows/amd64
+User-Agent: antigravity/cli/1.18.3 (aidev_client; os_type=windows; arch=amd64; cl=962369648; auth_method=consumer)
 X-Goog-Api-Client: google-cloud-sdk vscode_cloudshelleditor/0.1
 Client-Metadata: {"ideType":"ANTIGRAVITY","platform":"MACOS","pluginType":"GEMINI"}
 ```

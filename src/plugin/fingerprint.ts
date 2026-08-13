@@ -81,6 +81,18 @@ function platformToDisplayName(platform: string): "WINDOWS" | "MACOS" {
   return platform === "win32" ? "WINDOWS" : "MACOS";
 }
 
+/**
+ * Build the User-Agent in the real Antigravity CLI format.
+ * The daily-cloudcode-pa backend gates v1internal:streamGenerateContent on
+ * a `antigravity/cli/` User-Agent prefix — any other UA gets a 404
+ * "Requested entity was not found".
+ */
+export function buildCliUserAgent(platform: string, arch: string): string {
+  const osType = platform === "win32" ? "windows" : "darwin";
+  const archType = arch === "x64" ? "amd64" : arch;
+  return `antigravity/cli/${getAntigravityVersion()} (aidev_client; os_type=${osType}; arch=${archType}; cl=962369648; auth_method=consumer)`;
+}
+
 function generateDeviceId(): string {
   return crypto.randomUUID();
 }
@@ -101,7 +113,7 @@ export function generateFingerprint(): Fingerprint {
   return {
     deviceId: generateDeviceId(),
     sessionToken: generateSessionToken(),
-    userAgent: `antigravity/${getAntigravityVersion()} ${platform}/${arch}`,
+    userAgent: buildCliUserAgent(platform, arch),
     apiClient: randomFrom(SDK_CLIENTS),
     clientMetadata: {
       ideType: randomFrom(IDE_TYPES),
@@ -123,7 +135,7 @@ export function collectCurrentFingerprint(): Fingerprint {
   return {
     deviceId: generateDeviceId(),
     sessionToken: generateSessionToken(),
-    userAgent: `antigravity/${getAntigravityVersion()} ${platform}/${arch}`,
+    userAgent: buildCliUserAgent(os.platform(), os.arch()),
     apiClient: "google-cloud-sdk vscode_cloudshelleditor/0.1",
     clientMetadata: {
       ideType: "ANTIGRAVITY",
@@ -141,7 +153,7 @@ export function collectCurrentFingerprint(): Fingerprint {
  */
 export function updateFingerprintVersion(fingerprint: Fingerprint): boolean {
   const currentVersion = getAntigravityVersion();
-  const versionPattern = /^(antigravity\/)([\d.]+)/;
+  const versionPattern = /^(antigravity\/cli\/)([\d.]+)/;
   const match = fingerprint.userAgent.match(versionPattern);
 
   if (!match || match[2] === currentVersion) {
@@ -159,6 +171,15 @@ export function updateFingerprintVersion(fingerprint: Fingerprint): boolean {
 export function buildFingerprintHeaders(fingerprint: Fingerprint | null): Partial<FingerprintHeaders> {
   if (!fingerprint) {
     return {};
+  }
+
+  // Migrate legacy fingerprints (pre-CLI UA format) so previously stored
+  // accounts keep working: the backend requires an `antigravity/cli/` UA.
+  if (!/^antigravity\/cli\//.test(fingerprint.userAgent)) {
+    const legacyMatch = fingerprint.userAgent.match(/^antigravity\/[\d.]+\s+(win32|darwin)\/(x64|arm64|amd64)/);
+    const platform = legacyMatch?.[1] ?? (fingerprint.clientMetadata.platform === "WINDOWS" ? "win32" : "darwin");
+    const arch = legacyMatch?.[2] ?? "amd64";
+    fingerprint.userAgent = buildCliUserAgent(platform, arch);
   }
 
   return {
