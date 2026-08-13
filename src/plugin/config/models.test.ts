@@ -11,40 +11,30 @@ const getModel = (name: string) => {
 };
 
 describe("OPENCODE_MODEL_DEFINITIONS", () => {
-  it("includes the full set of configured models", () => {
+  it("includes only the working Antigravity models", () => {
     const modelNames = Object.keys(OPENCODE_MODEL_DEFINITIONS).sort();
 
     expect(modelNames).toEqual([
       "antigravity-claude-opus-4-6-thinking",
       "antigravity-claude-sonnet-4-6",
-      "antigravity-gemini-3-flash",
-      "antigravity-gemini-3-pro",
-      "antigravity-gemini-3.1-pro",
-      "gemini-2.5-flash",
-      "gemini-2.5-pro",
-      "gemini-3-flash-preview",
-      "gemini-3-pro-preview",
-      "gemini-3.1-pro-preview",
-      "gemini-3.1-pro-preview-customtools",
+      "antigravity-gemini-3.6-flash-tiered",
+      "antigravity-gemini-3.7-flash",
     ]);
   });
 
-  it("defines Gemini 3 variants for Antigravity models", () => {
-    expect(getModel("antigravity-gemini-3-pro").variants).toEqual({
-      low: { thinkingLevel: "low" },
-      high: { thinkingLevel: "high" },
+  it("defines the Gemini 3.7 Flash model without variants", () => {
+    expect(getModel("antigravity-gemini-3.7-flash").variants).toBeUndefined();
+    expect(getModel("antigravity-gemini-3.7-flash").limit).toEqual({
+      context: 1048576,
+      output: 65536,
     });
+  });
 
-    expect(getModel("antigravity-gemini-3.1-pro").variants).toEqual({
-      low: { thinkingLevel: "low" },
-      high: { thinkingLevel: "high" },
-    });
-
-    expect(getModel("antigravity-gemini-3-flash").variants).toEqual({
-      minimal: { thinkingLevel: "minimal" },
-      low: { thinkingLevel: "low" },
-      medium: { thinkingLevel: "medium" },
-      high: { thinkingLevel: "high" },
+  it("defines the Gemini 3.6 Flash Tiered model without variants", () => {
+    expect(getModel("antigravity-gemini-3.6-flash-tiered").variants).toBeUndefined();
+    expect(getModel("antigravity-gemini-3.6-flash-tiered").limit).toEqual({
+      context: 1048576,
+      output: 65536,
     });
   });
 
