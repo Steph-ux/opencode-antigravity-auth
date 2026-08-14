@@ -68,7 +68,7 @@ const GEMINI_3_FLASH_REGEX = /^gemini-3(?:\.\d+)?-flash/i;
 // (gemini-3.7-flash-{low|medium|high}); the bare name is rejected (429).
 // The official agy CLI defaults to -medium.
 const GEMINI_37_FLASH_BARE_REGEX = /^gemini-3\.7-flash$/i;
-const GEMINI_37_FLASH_TIERED_REGEX = /^gemini-3\.7-flash-(low|medium|high)$/i;
+export const GEMINI_37_FLASH_TIERED_REGEX = /^gemini-3\.7-flash-(low|medium|high)$/i;
 
 // ANTIGRAVITY_ONLY_MODELS removed - all models now default to antigravity
 
@@ -418,6 +418,11 @@ export function resolveModelWithVariant(
 
     let actualModel = base.actualModel;
     if (isAntigravityGemini3Pro) {
+      const baseModel = base.actualModel.replace(/-(low|medium|high)$/, "");
+      actualModel = `${baseModel}-${level}`;
+    } else if (GEMINI_37_FLASH_TIERED_REGEX.test(base.actualModel)) {
+      // Gemini 3.7 Flash GA carries the tier in the model name; re-apply it
+      // so the selected variant tier matches the name the backend receives.
       const baseModel = base.actualModel.replace(/-(low|medium|high)$/, "");
       actualModel = `${baseModel}-${level}`;
     }

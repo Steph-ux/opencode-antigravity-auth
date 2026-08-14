@@ -26,6 +26,7 @@ export {
   MODEL_ALIASES,
   THINKING_TIER_BUDGETS,
   GEMINI_3_THINKING_LEVELS,
+  GEMINI_37_FLASH_TIERED_REGEX,
 } from "./model-resolver";
 export type { VariantConfig } from "./model-resolver";
 

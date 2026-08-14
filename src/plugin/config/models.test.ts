@@ -22,8 +22,12 @@ describe("OPENCODE_MODEL_DEFINITIONS", () => {
     ]);
   });
 
-  it("defines the Gemini 3.7 Flash model without variants", () => {
-    expect(getModel("antigravity-gemini-3.7-flash").variants).toBeUndefined();
+  it("defines thinking tier variants for Gemini 3.7 Flash", () => {
+    expect(getModel("antigravity-gemini-3.7-flash").variants).toEqual({
+      low: { thinkingLevel: "low" },
+      medium: { thinkingLevel: "medium" },
+      high: { thinkingLevel: "high" },
+    });
     expect(getModel("antigravity-gemini-3.7-flash").limit).toEqual({
       context: 1048576,
       output: 65536,

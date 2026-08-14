@@ -227,6 +227,16 @@ describe("resolveModelWithVariant", () => {
       expect(result.configSource).toBe("variant");
     });
 
+    it("re-applies tier to name for Gemini 3.7 Flash", () => {
+      const result = resolveModelWithVariant("antigravity-gemini-3.7-flash", {
+        thinkingBudget: 32000,
+      });
+      expect(result.actualModel).toBe("gemini-3.7-flash-high");
+      expect(result.thinkingLevel).toBe("high");
+      expect(result.thinkingBudget).toBeUndefined();
+      expect(result.configSource).toBe("variant");
+    });
+
     it("uses budget directly for non-Gemini 3 models", () => {
       const result = resolveModelWithVariant("gemini-2.5-pro", {
         thinkingBudget: 20000,

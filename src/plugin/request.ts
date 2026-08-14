@@ -66,6 +66,7 @@ import {
   isClaudeModel,
   isClaudeThinkingModel,
   CLAUDE_THINKING_MAX_OUTPUT_TOKENS,
+  GEMINI_37_FLASH_TIERED_REGEX,
   type ThinkingTier,
 } from "./transform";
 import { detectErrorType } from "./recovery";
@@ -941,6 +942,14 @@ export function prepareAntigravityRequest(
             tierThinkingBudget = variantConfig.thinkingBudget;
             tierThinkingLevel = undefined;
           }
+        }
+
+        // Gemini 3.7 Flash GA requires the thinking tier in the model NAME (the
+        // backend only accepts gemini-3.7-flash-{low|medium|high}); the tier
+        // selected via a variant (providerOptions.google.thinkingLevel) is applied
+        // to the body above, so re-apply it to the resolved model name here.
+        if (tierThinkingLevel && GEMINI_37_FLASH_TIERED_REGEX.test(effectiveModel)) {
+          effectiveModel = effectiveModel.replace(/-(low|medium|high)$/i, `-${tierThinkingLevel}`);
         }
 
         if (isClaude) {
