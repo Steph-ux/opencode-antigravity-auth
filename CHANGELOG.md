@@ -1,8 +1,22 @@
 # Changelog
 
-## [Unreleased]
+## [1.7.0] - 2026-08-14
 
 ### Fixed
+
+- **Gemini 3.7 Flash tier stripping** - `resolveModelWithTier` stripped the tier suffix (`baseName`) for any tiered flash model, reverting `gemini-3.7-flash-medium` back to the bare `gemini-3.7-flash` the backend rejects with `429 RESOURCE_EXHAUSTED`. Gemini 3.7 Flash GA now keeps the explicit tier in the model name (`gemini-3.7-flash-{low|medium|high}`, default `medium`), and the gemini-cli path preserves a requested tier instead of forcing `-preview` (which the backend rejects with `403`). Verified E2E: `opencode run --model google/antigravity-gemini-3.7-flash` now exits 0 ("3.7 OK").
+
+- **Hybrid account selector rate-limit filter** - the per-account availability filter in `selectAccount` for the `hybrid` mode used `isRateLimitedForFamily` (AND of both quota pools), letting accounts exhausted for the *requested* header style get selected and then rejected by the post-select check, looping without ever sending a request. It now filters by `isRateLimitedForHeaderStyle` (the requested style only), mirroring the quota-fallback path. Verified: rotation across 4 accounts in ~32s with zero spin.
+
+- **Account wait-time mirror** - `getMinWaitTimeForFamily` now excludes cooling-down accounts (mirroring the selector), so the anti-tight-loop backoff doesn't wait on accounts that are not selectable anyway.
+
+- **Anti-tight-loop backoff** - when the request loop must switch accounts, it now waits for the earliest cooldown (`getMinWaitTimeForFamily`, min 500ms) before `continue` instead of spinning synchronously and accumulating log writes until OOM ("Out of memory" crash dumps).
+
+- **Quota fallback header style propagation** - when quota fallback selects an account via the alternate header style, the effective `headerStyle` now follows it; previously the request re-targeted the preferred (rate-limited) style and could loop forever.
+
+- **Placeholder `x-goog-api-key` stripped** - the provider `apiKey` sentinel (`antigravity-oauth`) added by OpenCode/AI SDK is removed; the backend rejects it with `400 "API key not valid"`.
+
+- **400 API-key retry on next endpoint** - sandbox endpoints sometimes reject OAuth tokens that work on prod; a `400` with an API-key error body now retries the next endpoint instead of failing.
 
 - **User-Agent gate on generation endpoints** - `daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent` returns `404 "Requested entity was not found"` for any `User-Agent` that does not start with `antigravity/cli/` (verified live against the backend: fingerprint format, Electron-style UA, and `google-api-nodejs-client` all get 404; any `antigravity/cli/<version>` gets 200). Fingerprint, randomized-header pool, and `getAntigravityHeaders()` now emit the real CLI UA format `antigravity/cli/{version} (aidev_client; os_type=...; arch=...; cl=962369648; auth_method=consumer)`. Stored fingerprints in legacy format are migrated on read. This unblocks `gemini-3.7-*` models.
 

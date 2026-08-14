@@ -64,6 +64,12 @@ const QUOTA_PREFIX_REGEX = /^antigravity-/i;
 const GEMINI_3_PRO_REGEX = /^gemini-3(?:\.\d+)?-pro/i;
 const GEMINI_3_FLASH_REGEX = /^gemini-3(?:\.\d+)?-flash/i;
 
+// Gemini 3.7 Flash GA: the backend only accepts explicit tier names
+// (gemini-3.7-flash-{low|medium|high}); the bare name is rejected (429).
+// The official agy CLI defaults to -medium.
+const GEMINI_37_FLASH_BARE_REGEX = /^gemini-3\.7-flash$/i;
+const GEMINI_37_FLASH_TIERED_REGEX = /^gemini-3\.7-flash-(low|medium|high)$/i;
+
 // ANTIGRAVITY_ONLY_MODELS removed - all models now default to antigravity
 
 /**
@@ -188,13 +194,22 @@ export function resolveModelWithTier(requestedModel: string, options: ModelResol
     if (isGemini3Pro && !tier && !isImageModel) {
       antigravityModel = `${modelWithoutQuota}-low`;
     } else if (isGemini3Flash && tier) {
-      antigravityModel = baseName;
+      // Gemini 3.7 Flash GA keeps the tier in the model name (the backend only
+      // accepts gemini-3.7-flash-{low|medium|high}); the older preview flash
+      // models use the bare name with the tier carried by thinkingLevel.
+      antigravityModel = GEMINI_37_FLASH_TIERED_REGEX.test(modelWithoutQuota)
+        ? modelWithoutQuota
+        : baseName;
+    } else if (GEMINI_37_FLASH_BARE_REGEX.test(modelWithoutQuota)) {
+      antigravityModel = `${modelWithoutQuota}-medium`;
     }
   }
 
   const actualModel = skipAlias
     ? antigravityModel
-    : MODEL_ALIASES[modelWithoutQuota] || MODEL_ALIASES[baseName] || baseName;
+    : GEMINI_37_FLASH_TIERED_REGEX.test(modelWithoutQuota)
+      ? modelWithoutQuota
+      : MODEL_ALIASES[modelWithoutQuota] || MODEL_ALIASES[baseName] || baseName;
 
   const resolvedModel = actualModel;
 
@@ -331,6 +346,9 @@ export function resolveModelForHeaderStyle(
     // Don't add tier suffix to image models - they don't support thinking
     if (isGemini3Pro && !hasTierSuffix && !isImageModel) {
       transformedModel = `${transformedModel}-low`;
+    } else if (GEMINI_37_FLASH_BARE_REGEX.test(transformedModel)) {
+      // Gemini 3.7 Flash GA requires an explicit tier (see GEMINI_37_FLASH_BARE_REGEX)
+      transformedModel = `${transformedModel}-medium`;
     }
     
     const prefixedModel = `antigravity-${transformedModel}`;
@@ -338,13 +356,23 @@ export function resolveModelForHeaderStyle(
   }
   
   if (headerStyle === "gemini-cli") {
-    let transformedModel = requestedModel
-      .replace(/^antigravity-/i, "")
-      .replace(/-(low|medium|high)$/i, "");
+    let transformedModel = requestedModel.replace(/^antigravity-/i, "");
+    const requestedTier = /-(low|medium|high)$/i.test(transformedModel)
+      ? extractThinkingTierFromModel(transformedModel)
+      : undefined;
 
-    const hasPreviewSuffix = /-preview($|-)/i.test(transformedModel);
-    if (!hasPreviewSuffix) {
-      transformedModel = `${transformedModel}-preview`;
+    transformedModel = transformedModel.replace(/-(low|medium|high)$/i, "");
+
+    if (GEMINI_37_FLASH_BARE_REGEX.test(transformedModel)) {
+      // Gemini 3.7 Flash GA has no -preview alias; the backend accepts the
+      // explicit tier (gemini-3.7-flash-{low|medium|high}) under gemini-cli
+      // headers too. Preserve an explicitly requested tier, default -medium.
+      transformedModel = `${transformedModel}-${requestedTier ?? "medium"}`;
+    } else {
+      const hasPreviewSuffix = /-preview($|-)/i.test(transformedModel);
+      if (!hasPreviewSuffix) {
+        transformedModel = `${transformedModel}-preview`;
+      }
     }
     
     return {

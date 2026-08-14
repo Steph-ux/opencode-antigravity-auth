@@ -1552,7 +1552,13 @@ export const createAntigravityPlugin = (providerId: string) => async (
               explicitQuota,
               allowQuotaFallback,
             } = routingDecision;
-            
+
+            // Effective header style for this iteration. When the quota fallback
+            // below selects an account via the alternate style, this must follow,
+            // otherwise the request would re-target the preferred (rate-limited)
+            // style and loop forever without ever sending a request.
+            let headerStyle = preferredHeaderStyle;
+
             if (accountCount === 0) {
               throw new Error("No Antigravity accounts available. Run `opencode auth login`.");
             }
@@ -1585,6 +1591,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
                 softQuotaCacheTtlMs,
               );
               if (account) {
+                headerStyle = alternateHeaderStyle;
                 pushDebug(
                   `selected-by-fallback idx=${account.index} preferred=${preferredHeaderStyle} alternate=${alternateHeaderStyle}`,
                 );
@@ -1876,7 +1883,6 @@ export const createAntigravityPlugin = (providerId: string) => async (
             // - Models with antigravity- prefix -> use Antigravity quota
             // - Gemini models without explicit prefix -> follow cli_first
             // - Claude models -> always use Antigravity
-            let headerStyle = preferredHeaderStyle;
             pushDebug(`headerStyle=${headerStyle} explicit=${explicitQuota}`);
             if (account.fingerprint) {
               pushDebug(`fingerprint: quotaUser=${account.fingerprint.quotaUser} deviceId=${account.fingerprint.deviceId.slice(0, 8)}...`);
@@ -2272,11 +2278,20 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   }
                 }
 
-                const shouldRetryEndpoint = (
+                let shouldRetryEndpoint = (
                   response.status === 403 ||
                   response.status === 404 ||
                   response.status >= 500
                 );
+
+                // Retry 400 "API key not valid" on next endpoint — sandbox endpoints
+                // sometimes reject OAuth tokens that work on prod
+                if (response.status === 400 && i < ANTIGRAVITY_ENDPOINT_FALLBACKS.length - 1) {
+                  if (await isApiKeyErrorResponse(response)) {
+                    pushDebug(`400 API key error on ${currentEndpoint}, trying next endpoint`);
+                    shouldRetryEndpoint = true;
+                  }
+                }
 
                 if (shouldRetryEndpoint && i < ANTIGRAVITY_ENDPOINT_FALLBACKS.length - 1) {
                   await logResponseBody(debugContext, response, response.status);
@@ -2473,6 +2488,17 @@ export const createAntigravityPlugin = (providerId: string) => async (
                 throw lastError || new Error("All Antigravity endpoints failed");
               }
 
+              // Anti-tight-loop: when we must switch accounts, wait for the
+              // earliest cooldown before retrying. Without this, a rate-limited
+              // pool (or a failed account) would re-trigger `continue` in a
+              // synchronous spin, burning CPU until OOM instead of waiting.
+              const retryWaitMs = accountManager.getMinWaitTimeForFamily(
+                family,
+                model,
+                preferredHeaderStyle,
+                true,
+              );
+              await sleep(retryWaitMs > 0 ? retryWaitMs : 500, abortSignal);
               continue;
             }
 
@@ -3444,8 +3470,14 @@ function isExplicitQuotaFromUrl(urlString: string): boolean {
   return explicitQuota ?? false;
 }
 
+async function isApiKeyErrorResponse(response: { clone(): { text(): Promise<string> } }): Promise<boolean> {
+  const errorBodyText = await response.clone().text().catch(() => "")
+  return errorBodyText.includes("API key not valid") || errorBodyText.includes("api_key")
+}
+
 export const __testExports = {
   getHeaderStyleFromUrl,
+  isApiKeyErrorResponse,
   resolveHeaderRoutingDecision,
   resolveQuotaFallbackHeaderStyle,
 };

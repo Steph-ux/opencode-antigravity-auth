@@ -1,5 +1,7 @@
 #!/usr/bin/env npx tsx
 import { spawn } from "child_process";
+import { existsSync } from "fs";
+import { join } from "path";
 
 interface ModelTest {
   model: string;
@@ -14,20 +16,34 @@ const MODELS: ModelTest[] = [
   { model: "google/gemini-2.5-flash", category: "gemini-cli" },
 
   // Antigravity Gemini
+  { model: "google/antigravity-gemini-3.6-flash-tiered", category: "antigravity-gemini" },
   { model: "google/antigravity-gemini-3.7-flash", category: "antigravity-gemini" },
-  { model: "google/antigravity-gemini-3-pro-low", category: "antigravity-gemini" },
-  { model: "google/antigravity-gemini-3-pro-high", category: "antigravity-gemini" },
-  { model: "google/antigravity-gemini-3-flash", category: "antigravity-gemini" },
 
   // Antigravity Claude
   { model: "google/antigravity-claude-sonnet-4-6", category: "antigravity-claude" },
-  { model: "google/antigravity-claude-opus-4-6-thinking-low", category: "antigravity-claude" },
-  { model: "google/antigravity-claude-opus-4-6-thinking-medium", category: "antigravity-claude" },
-  { model: "google/antigravity-claude-opus-4-6-thinking-high", category: "antigravity-claude" },
+  { model: "google/antigravity-claude-opus-4-6-thinking", category: "antigravity-claude" },
 ];
 
 const TEST_PROMPT = "Reply with exactly one word: WORKING";
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+function resolveOpenCode(): string {
+  if (process.platform !== "win32") {
+    return "opencode";
+  }
+  const candidates = ["opencode.exe", "opencode.cmd", "opencode.bat", "opencode"];
+  for (const dir of process.env.PATH?.split(";") ?? []) {
+    if (!dir) continue;
+    for (const candidate of candidates) {
+      if (existsSync(join(dir, candidate))) {
+        return join(dir, candidate);
+      }
+    }
+  }
+  return "opencode.cmd";
+}
+
+const OPENCODE_BIN = resolveOpenCode();
 
 interface TestResult {
   success: boolean;
@@ -39,14 +55,28 @@ async function testModel(model: string, timeoutMs: number): Promise<TestResult> 
   const start = Date.now();
 
   return new Promise((resolve) => {
-    const proc = spawn("opencode", ["run", TEST_PROMPT, "--model", model], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    // win32 : spawn via cmd.exe — le prompt et le modèle doivent être quotés,
+    // sinon "Reply with exactly one word: WORKING" est splitté en 5 args
+    // et opencode reçoit un flag invalide -> "Unexpected server error"
+    const isWin = process.platform === "win32";
+    const quoteArg = (arg: string) => `"${arg.replaceAll('"', '\\"')}"`;
+    const proc = isWin
+      ? spawn(`${OPENCODE_BIN} run ${quoteArg(TEST_PROMPT)} --model ${quoteArg(model)}`, {
+          stdio: ["ignore", "pipe", "pipe"],
+          shell: true,
+        })
+      : spawn(OPENCODE_BIN, ["run", TEST_PROMPT, "--model", model], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
 
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
-      proc.kill("SIGKILL");
+      if (process.platform === "win32") {
+        spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { stdio: "ignore" });
+      } else {
+        proc.kill("SIGKILL");
+      }
       resolve({ success: false, error: `Timeout after ${timeoutMs}ms`, duration: Date.now() - start });
     }, timeoutMs);
 

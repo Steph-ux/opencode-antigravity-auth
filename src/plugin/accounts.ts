@@ -535,7 +535,11 @@ export class AccountManager {
             index: acc.index,
             lastUsed: acc.lastUsed,
             healthScore: healthTracker.getScore(acc.index),
-            isRateLimited: isRateLimitedForFamily(acc, family, model) || 
+            // Filter by the REQUESTED header style only: isRateLimitedForFamily()
+            // (AND of both pools) would let accounts that are exhausted for the
+            // requested style pass, get selected, then rejected by the post-select
+            // check -> selection loop without ever sending a request.
+            isRateLimited: isRateLimitedForHeaderStyle(acc, family, headerStyle, model) ||
                           isOverSoftQuotaThreshold(acc, family, softQuotaThresholdPercent, softQuotaCacheTtlMs, model),
             isCoolingDown: this.isAccountCoolingDown(acc),
           };
@@ -948,7 +952,9 @@ export class AccountManager {
   ): number {
     const available = this.accounts.filter((a) => {
       clearExpiredRateLimits(a);
-      return a.enabled !== false && (strict && headerStyle
+      // Must mirror the account selector's availability filter: an account that
+      // is cooling down is NOT selectable, so it must not zero out the wait time
+      return a.enabled !== false && !this.isAccountCoolingDown(a) && (strict && headerStyle
         ? !isRateLimitedForHeaderStyle(a, family, headerStyle, model)
         : !isRateLimitedForFamily(a, family, model));
     });
