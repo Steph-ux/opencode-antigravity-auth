@@ -58,6 +58,7 @@ import {
   needsThinkingRecovery,
 } from "./thinking-recovery";
 import { sanitizeCrossModelPayloadInPlace } from "./transform/cross-model-sanitizer";
+import { pruneMessagesContext } from "./transform/smart-pruner";
 import { isGemini3Model, isImageGenerationModel, buildImageGenerationConfig, applyGeminiTransforms } from "./transform";
 import {
   resolveModelWithTier,
@@ -872,7 +873,13 @@ export function prepareAntigravityRequest(
         for (const req of requestObjects) {
           // Use stable session ID for signature caching across multi-turn conversations
           (req as any).sessionId = signatureSessionKey;
-          stripInjectedDebugFromRequestPayload(req as Record<string, unknown>);
+          // Step -1: Apply smart context pruning to trim bulky historical tool outputs
+          if (Array.isArray((req as any).contents)) {
+            (req as any).contents = pruneMessagesContext((req as any).contents);
+          }
+          if (Array.isArray((req as any).messages)) {
+            (req as any).messages = pruneMessagesContext((req as any).messages);
+          }
 
           if (isClaude) {
             // Step 0: Sanitize cross-model metadata (strips Gemini signatures when sending to Claude)

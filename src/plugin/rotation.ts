@@ -201,6 +201,8 @@ export interface AccountWithMetrics {
   healthScore: number;
   isRateLimited: boolean;
   isCoolingDown: boolean;
+  remainingQuotaFraction?: number;
+  inFlightCount?: number;
 }
 
 /**
@@ -235,10 +237,10 @@ const STICKINESS_BONUS = 150;
 const SWITCH_THRESHOLD = 100;
 
 /**
- * Select account using hybrid strategy with stickiness:
+ * Select account using hybrid strategy with stickiness, predictive quota, and concurrency load balancing:
  * 1. Filter available accounts (not rate-limited, not cooling down, healthy, has tokens)
- * 2. Calculate priority score: health (2x) + tokens (5x) + freshness (0.1x)
- * 3. Apply stickiness bonus to current account
+ * 2. Calculate priority score: health (2x) + tokens (5x) + freshness (0.1x) + quota gauge (6x) - in-flight penalty
+ * 3. Apply stickiness bonus to current account (unless current is already busy)
  * 4. Only switch if another account beats current by SWITCH_THRESHOLD
  * 
  * @param accounts - All accounts with their metrics
@@ -269,17 +271,24 @@ export function selectHybridAccount(
     return null;
   }
 
+  // Predictive quota routing: if we have accounts with confirmed positive quota (> 0%),
+  // prefer them over accounts with confirmed exhausted quota (=== 0)
+  const nonZeroQuota = candidates.filter(c => c.remainingQuotaFraction === undefined || c.remainingQuotaFraction > 0);
+  const selectionPool = nonZeroQuota.length > 0 ? nonZeroQuota : candidates;
+
   const maxTokens = tokenTracker.getMaxTokens();
-  const scored = candidates
+  const scored = selectionPool
     .map(acc => {
       const baseScore = calculateHybridScore(acc, maxTokens);
-      // Apply stickiness bonus to current account
-      const stickinessBonus = acc.index === currentAccountIndex ? STICKINESS_BONUS : 0;
+      // Apply stickiness bonus to current account ONLY if it has no active in-flight requests
+      const isBusy = (acc.inFlightCount ?? 0) > 0;
+      const stickinessBonus = (acc.index === currentAccountIndex && !isBusy) ? STICKINESS_BONUS : 0;
       return {
         index: acc.index,
         baseScore,
         score: baseScore + stickinessBonus,
-        isCurrent: acc.index === currentAccountIndex
+        isCurrent: acc.index === currentAccountIndex,
+        inFlightCount: acc.inFlightCount ?? 0,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -292,8 +301,11 @@ export function selectHybridAccount(
   // If current account is still a candidate, check if switch is warranted
   const currentCandidate = scored.find(s => s.isCurrent);
   if (currentCandidate && !best.isCurrent) {
+    // If current is currently serving an in-flight request and an idle candidate exists, switch immediately!
+    if (currentCandidate.inFlightCount > 0 && best.inFlightCount === 0) {
+      return best.index;
+    }
     // Only switch if best beats current's BASE score by threshold
-    // (compare base scores to avoid circular stickiness bonus comparison)
     const advantage = best.baseScore - currentCandidate.baseScore;
     if (advantage < SWITCH_THRESHOLD) {
       return currentCandidate.index;
@@ -315,7 +327,16 @@ function calculateHybridScore(
   const tokenComponent = (account.tokens / maxTokens) * 100 * 5; // 0-500
   const secondsSinceUsed = (Date.now() - account.lastUsed) / 1000;
   const freshnessComponent = Math.min(secondsSinceUsed, 3600) * 0.1; // 0-360
-  return Math.max(0, healthComponent + tokenComponent + freshnessComponent);
+
+  // Predictive live quota gauge component (0-600)
+  const quotaComponent = account.remainingQuotaFraction !== undefined
+    ? account.remainingQuotaFraction * 600
+    : 300; // neutral default if unmeasured
+
+  // In-flight concurrency load balancing penalty (250 pts per parallel request)
+  const inFlightPenalty = (account.inFlightCount ?? 0) * 250;
+
+  return Math.max(0, healthComponent + tokenComponent + freshnessComponent + quotaComponent - inFlightPenalty);
 }
 
 // ============================================================================

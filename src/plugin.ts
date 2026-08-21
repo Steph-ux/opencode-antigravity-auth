@@ -51,6 +51,9 @@ import { initLogger, createLogger } from "./plugin/logger";
 import { initHealthTracker, getHealthTracker, initTokenTracker, getTokenTracker } from "./plugin/rotation";
 import { initAntigravityVersion } from "./plugin/version";
 import { executeSearch } from "./plugin/search";
+import { startBackgroundTokenRefresher } from "./plugin/token-refresher";
+import { autoHealAccounts, startPeriodicQuotaSync } from "./plugin/auto-heal";
+import { renderMarkdownDashboard } from "./plugin/ui/dashboard";
 import type {
   GetAuth,
   LoaderResult,
@@ -1380,10 +1383,25 @@ export const createAntigravityPlugin = (providerId: string) => async (
     },
   });
 
+  // Create antigravity_status tool for live dashboard integration in OpenCode
+  const antigravityStatusTool = tool({
+    description: "Get real-time Antigravity account status, remaining quota percentages per model (Claude Sonnet/Opus, Gemini 3.7 Flash, Gemini Pro), reset countdowns, and active account health metrics.",
+    args: {},
+    async execute() {
+      const stored = await loadAccounts();
+      if (!stored || stored.accounts.length === 0) {
+        return "No Antigravity accounts registered. Run `opencode auth login` to add an account.";
+      }
+      const results = await checkAccountsQuota(stored.accounts, client, providerId);
+      return renderMarkdownDashboard(results);
+    },
+  });
+
   return {
     event: eventHandler,
     tool: {
       google_search: googleSearchTool,
+      antigravity_status: antigravityStatusTool,
     },
     auth: {
     provider: providerId,
@@ -1415,6 +1433,13 @@ export const createAntigravityPlugin = (providerId: string) => async (
       if (accountManager.getAccountCount() > 0) {
         accountManager.requestSaveToDisk();
       }
+
+      // Start proactive token refresher (Zero-Wait latency on expiration)
+      startBackgroundTokenRefresher(accountManager, client);
+
+      // Auto-heal accounts and sync predictive quotas in background
+      autoHealAccounts(accountManager, client).catch(() => {});
+      startPeriodicQuotaSync(accountManager, client);
 
       // Initialize proactive token refresh queue (ported from LLM-API-Key-Proxy)
       let refreshQueue: ProactiveRefreshQueue | null = null;
@@ -2272,6 +2297,19 @@ export const createAntigravityPlugin = (providerId: string) => async (
                     pushDebug(`verification-required: disabled account ${account.index}`);
                     getHealthTracker().recordFailure(account.index);
 
+                    lastFailure = createFailureContext(response);
+                    shouldSwitchAccount = true;
+                    break;
+                  }
+
+                  const isIamPermissionError =
+                    errorBodyText.includes("IAM_PERMISSION_DENIED") ||
+                    errorBodyText.includes("rising-fact-p41fc") ||
+                    errorBodyText.includes("cloudaicompanion.instances.completeTask");
+
+                  if (isIamPermissionError && headerStyle === "gemini-cli") {
+                    pushDebug(`403 IAM permission denied for gemini-cli on account ${account.index} (no GCP project configured)`);
+                    accountManager.markRateLimited(account, 24 * 60 * 60 * 1000, family, "gemini-cli", model);
                     lastFailure = createFailureContext(response);
                     shouldSwitchAccount = true;
                     break;

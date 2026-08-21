@@ -53,6 +53,12 @@ export const MODEL_ALIASES: Record<string, string> = {
   "gemini-claude-opus-4-6-thinking-medium": "claude-opus-4-6-thinking",
   "gemini-claude-opus-4-6-thinking-high": "claude-opus-4-6-thinking",
   "gemini-claude-sonnet-4-6": "claude-sonnet-4-6",
+  "claude-3-7-sonnet": "claude-3-7-sonnet-20250219",
+  "claude-3.7-sonnet": "claude-3-7-sonnet-20250219",
+  "claude-sonnet-4-5": "claude-sonnet-4-5",
+  "claude-opus-4-5": "claude-opus-4-5",
+  "claude-opus-4-8": "claude-opus-4-8",
+  "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
 
   // Image generation models - only gemini-3-pro-image is available via Antigravity API
   // Note: gemini-2.5-flash-image (Nano Banana) is NOT supported by Antigravity - only Google AI API
@@ -441,4 +447,34 @@ export function resolveModelWithVariant(
     thinkingBudget: budget,
     configSource: "variant",
   };
+}
+
+/**
+ * Intelligent cross-model fallback chains to guarantee continuity when
+ * top-tier models are temporarily exhausted.
+ */
+export const MODEL_FALLBACK_CHAINS: Record<string, string[]> = {
+  // Claude Thinking -> Claude Sonnet -> Gemini 3.7 Flash
+  "claude-opus-4-6-thinking": ["claude-sonnet-4-6", "gemini-3.7-flash-medium"],
+  "claude-sonnet-4-6": ["gemini-3.7-flash-medium"],
+
+  // Gemini Pro -> Gemini 3.7 Flash -> Gemini 2.5 Flash
+  "gemini-3-pro": ["gemini-3.7-flash-medium", "gemini-2.5-flash"],
+  "gemini-3.1-pro": ["gemini-3.7-flash-medium", "gemini-2.5-flash"],
+  "gemini-2.5-pro": ["gemini-3.7-flash-medium", "gemini-2.5-flash"],
+
+  // Gemini Flash variants
+  "gemini-3.7-flash-high": ["gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-2.5-flash"],
+  "gemini-3.7-flash-medium": ["gemini-3.7-flash-low", "gemini-2.5-flash"],
+};
+
+export function getNextFallbackModel(currentModel: string): string | null {
+  const normalized = currentModel
+    .replace(/^antigravity-/i, "")
+    .replace(/^google\//i, "")
+    .replace(/-thinking-(low|medium|high)$/i, "-thinking")
+    .toLowerCase();
+
+  const chain = MODEL_FALLBACK_CHAINS[normalized];
+  return chain && chain.length > 0 ? (chain[0] ?? null) : null;
 }

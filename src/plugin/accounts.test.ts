@@ -314,7 +314,7 @@ describe("AccountManager", () => {
       expect(manager.getAvailableHeaderStyle(account!, "gemini")).toBe("antigravity");
     });
 
-    it("getAvailableHeaderStyle returns gemini-cli when antigravity is rate-limited", () => {
+    it("getAvailableHeaderStyle returns gemini-cli when antigravity is rate-limited and projectId is configured", () => {
       const stored: AccountStorageV4 = {
         version: 4,
         accounts: [
@@ -329,6 +329,24 @@ describe("AccountManager", () => {
       manager.markRateLimited(account!, 60000, "gemini", "antigravity");
 
       expect(manager.getAvailableHeaderStyle(account!, "gemini")).toBe("gemini-cli");
+    });
+
+    it("getAvailableHeaderStyle returns null (no gemini-cli fallback) when account has no GCP project", () => {
+      const stored: AccountStorageV4 = {
+        version: 4,
+        accounts: [
+          { refreshToken: "r1", addedAt: 1, lastUsed: 0 },
+        ],
+        activeIndex: 0,
+      };
+
+      const manager = new AccountManager(undefined, stored);
+      const account = manager.getCurrentOrNextForFamily("gemini");
+
+      manager.markRateLimited(account!, 60000, "gemini", "antigravity");
+
+      // Without a configured GCP project, gemini-cli must not be offered to avoid 403 on rising-fact-p41fc
+      expect(manager.getAvailableHeaderStyle(account!, "gemini")).toBeNull();
     });
 
     it("getAvailableHeaderStyle returns null when both header styles are rate-limited", () => {

@@ -15,7 +15,7 @@ const projectContextPendingCache = new Map<string, Promise<ProjectContextResult>
 
 const CODE_ASSIST_METADATA = {
   ideType: "ANTIGRAVITY",
-  platform: process.platform === "win32" ? "WINDOWS" : "MACOS",
+  platform: "PLATFORM_UNSPECIFIED",
   pluginType: "GEMINI",
 } as const;
 
@@ -125,12 +125,13 @@ export async function loadManagedProject(
   const metadata = buildMetadata(projectId);
   const requestBody: Record<string, unknown> = { metadata };
 
+  const antigravityHeaders = getAntigravityHeaders();
   const loadHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${accessToken}`,
-    "User-Agent": "google-api-nodejs-client/9.15.1",
-    "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
-    "Client-Metadata": getAntigravityHeaders()["Client-Metadata"],
+    "User-Agent": antigravityHeaders["User-Agent"],
+    "X-Goog-Api-Client": antigravityHeaders["X-Goog-Api-Client"] ?? "google-cloud-sdk vscode_cloudshelleditor/0.1",
+    "Client-Metadata": antigravityHeaders["Client-Metadata"],
   };
 
   const loadEndpoints = Array.from(

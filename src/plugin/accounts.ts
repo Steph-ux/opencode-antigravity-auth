@@ -177,6 +177,13 @@ function getQuotaKey(family: ModelFamily, headerStyle: HeaderStyle, model?: stri
   return base;
 }
 
+function hasConfiguredGcpProject(account: ManagedAccount): boolean {
+  return Boolean(
+    (account.parts.projectId && account.parts.projectId.trim()) ||
+    (account.parts.managedProjectId && account.parts.managedProjectId.trim())
+  );
+}
+
 function isRateLimitedForQuotaKey(account: ManagedAccount, key: QuotaKey): boolean {
   const resetTime = account.rateLimitResetTimes[key];
   return resetTime !== undefined && nowMs() < resetTime;
@@ -188,6 +195,9 @@ function isRateLimitedForFamily(account: ManagedAccount, family: ModelFamily, mo
   }
   
   const antigravityIsLimited = isRateLimitedForHeaderStyle(account, family, "antigravity", model);
+  if (!hasConfiguredGcpProject(account)) {
+    return antigravityIsLimited;
+  }
   const cliIsLimited = isRateLimitedForHeaderStyle(account, family, "gemini-cli", model);
   
   return antigravityIsLimited && cliIsLimited;
@@ -198,6 +208,11 @@ function isRateLimitedForHeaderStyle(account: ManagedAccount, family: ModelFamil
   
   if (family === "claude") {
     return isRateLimitedForQuotaKey(account, "claude");
+  }
+
+  // Gemini CLI quota requires a user-configured GCP project. Without one, fallback will always fail with 403 on rising-fact-p41fc.
+  if (headerStyle === "gemini-cli" && !hasConfiguredGcpProject(account)) {
+    return true;
   }
 
   // Check model-specific quota first if provided
@@ -308,10 +323,28 @@ export class AccountManager {
   };
   private lastToastAccountIndex = -1;
   private lastToastTime = 0;
-
   private savePending = false;
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
   private savePromiseResolvers: Array<() => void> = [];
+  private inFlightRequests = new Map<number, number>();
+
+  getInFlight(accountIndex: number): number {
+    return this.inFlightRequests.get(accountIndex) ?? 0;
+  }
+
+  incrementInFlight(account: ManagedAccount): void {
+    const current = this.getInFlight(account.index);
+    this.inFlightRequests.set(account.index, current + 1);
+  }
+
+  decrementInFlight(account: ManagedAccount): void {
+    const current = this.getInFlight(account.index);
+    if (current <= 1) {
+      this.inFlightRequests.delete(account.index);
+    } else {
+      this.inFlightRequests.set(account.index, current - 1);
+    }
+  }
 
   static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
     const stored = await loadAccounts();
@@ -531,6 +564,9 @@ export class AccountManager {
         .filter(acc => acc.enabled !== false)
         .map(acc => {
           clearExpiredRateLimits(acc);
+          const quotaGroup = family === "claude" ? "claude" : (model && model.includes("pro")) ? "gemini-pro" : "gemini-flash";
+          const quotaFraction = acc.cachedQuota?.[quotaGroup]?.remainingFraction;
+
           return {
             index: acc.index,
             lastUsed: acc.lastUsed,
@@ -542,6 +578,8 @@ export class AccountManager {
             isRateLimited: isRateLimitedForHeaderStyle(acc, family, headerStyle, model) ||
                           isOverSoftQuotaThreshold(acc, family, softQuotaThresholdPercent, softQuotaCacheTtlMs, model),
             isCoolingDown: this.isAccountCoolingDown(acc),
+            remainingQuotaFraction: quotaFraction,
+            inFlightCount: this.getInFlight(acc.index),
           };
         });
 

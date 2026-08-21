@@ -131,11 +131,13 @@ async function fetchWithTimeout(
 
 async function fetchProjectID(accessToken: string): Promise<string> {
   const errors: string[] = [];
+  const antigravityHeaders = getAntigravityHeaders();
   const loadHeaders: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
-    "User-Agent": GEMINI_CLI_HEADERS["User-Agent"],
-    "Client-Metadata": getAntigravityHeaders()["Client-Metadata"],
+    "User-Agent": antigravityHeaders["User-Agent"],
+    "X-Goog-Api-Client": antigravityHeaders["X-Goog-Api-Client"] ?? "google-cloud-sdk vscode_cloudshelleditor/0.1",
+    "Client-Metadata": antigravityHeaders["Client-Metadata"],
   };
 
   const loadEndpoints = Array.from(
@@ -151,7 +153,7 @@ async function fetchProjectID(accessToken: string): Promise<string> {
         body: JSON.stringify({
           metadata: {
             ideType: "ANTIGRAVITY",
-            platform: process.platform === "win32" ? "WINDOWS" : "MACOS",
+            platform: "PLATFORM_UNSPECIFIED",
             pluginType: "GEMINI",
           },
         }),

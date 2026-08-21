@@ -6,7 +6,7 @@ describe("Model-specific Gemini quota", () => {
   let manager: AccountManager;
   const auth: OAuthAuthDetails = {
     type: "oauth",
-    refresh: "test-refresh",
+    refresh: "test-refresh|test-project",
     access: "test-access",
     expires: Date.now() + 3600000,
   };
